@@ -1,20 +1,33 @@
 global
     maxconn {{or (key "service/haproxy/maxconn") 256}}
+    tune.ssl.default-dh-param {{or (key "service/haproxy/default-dh-param") 2048}}
     debug
 
 defaults
     mode http
+    option forwardfor
+    option http-server-close
     timeout connect {{or (key "service/haproxy/timeouts/connect") "5000ms"}}
     timeout client {{or (key "service/haproxy/timeouts/client") "50000ms"}}
     timeout server {{or (key "service/haproxy/timeouts/server") "50000ms"}}
 
 frontend www
     bind *:80
+    bind *:443 ssl crt /certs/
+
+    reqadd X-Forwarded-Proto:\ https
 
     # Generated automatically by consul-template
 {{ range services }}
     acl host_{{ .Name }} hdr(host) -i {{ .Name }}.{{ or (env "HAPROXY_DOMAIN") "haproxy.service.consul" }} 
     use_backend {{ .Name }}_backend if host_{{ .Name }}
+
+{{if eq .Name "www"}}
+    # Use "www" as default host for domain.
+    acl host hdr(host) -i {{ or (env "HAPROXY_DOMAIN") "haproxy.service.consul" }}
+    use_backend {{ .Name }}_backend if host
+{{ end }}
+
 {{ end }}
 
 {{ range services }}
